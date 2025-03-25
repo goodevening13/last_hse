@@ -23,6 +23,7 @@
 | TF-IDF + Classifier | 0.75 | Нет |
 
 Скриншот сравнения моделей и оптимизаций гиперпараметров доступны по ссылке https://drive.google.com/drive/folders/14yWsWbaTKqyIkTIvUcH4MWT9Q_XKmxj0?usp=sharing
+Данные для экспериментов доступны по ссылке https://drive.google.com/file/d/1SxXIgmkKvaCkXnXX4elrX_ZAXhisLGJz/view?usp=sharing (это результаты hw_1)
 
 **Выбранная итоговая модель:** LSTM с dropout=0.25, hidden_size=64, num_layers=1, lr=0.001, optimizer=RMSProp
 

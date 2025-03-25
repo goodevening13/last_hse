@@ -4,21 +4,28 @@ import torch.nn.functional as F
 from transformers import PreTrainedModel, PretrainedConfig
 
 class MainModelConfig(PretrainedConfig):
-    def __init__(self, embed_dim=64, hidden_size=64, output_size=7, **kwargs):
+    model_type = "mainmodel"
+    
+    def __init__(self, embed_dim=64, hidden_size=64, output_size=7, num_layers=1, vocab_size=128256, dropout=0.25, **kwargs):
         self.embed_dim = embed_dim
         self.hidden_size = hidden_size
         self.output_size = output_size
+        self.num_layers = num_layers
+        self.vocab_size = vocab_size
+        self.dropout = dropout
         super().__init__(**kwargs)
 
 
 class MainModel(PreTrainedModel):
-    def __init__(self, embed_dim, hidden_size, output_size, num_layers=1, vocab_size=128256, dropout=0.25):
-        super(Baseline, self).__init__()
-        self.embedding = nn.Embedding(vocab_size, embed_dim)
-        self.embed_dim = embed_dim
-        self.num_layers = num_layers
-        self.rnn = nn.LSTM(embed_dim, hidden_size, num_layers, batch_first=True, dropout=dropout)
-        self.fc = nn.Linear(hidden_size, output_size)
+    config_class = MainModelConfig
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.embedding = nn.Embedding(config.vocab_size, config.embed_dim)
+        self.embed_dim = config.embed_dim
+        self.num_layers = config.num_layers
+        self.rnn = nn.LSTM(config.embed_dim, config.hidden_size, config.num_layers, batch_first=True, dropout=config.dropout)
+        self.fc = nn.Linear(config.hidden_size, config.output_size)
 
     def forward(self, x, lengths):
         h0 = torch.zeros(self.num_layers, x.size(0), self.embed_dim).to(x.device)
