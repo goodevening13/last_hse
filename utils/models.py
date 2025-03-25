@@ -1,10 +1,38 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from transformers import PreTrainedModel, PretrainedConfig
+
+class MainModelConfig(PretrainedConfig):
+    def __init__(self, embed_dim=64, hidden_size=64, output_size=7, **kwargs):
+        self.embed_dim = embed_dim
+        self.hidden_size = hidden_size
+        self.output_size = output_size
+        super().__init__(**kwargs)
+
+
+class MainModel(PreTrainedModel):
+    def __init__(self, embed_dim, hidden_size, output_size, num_layers=1, vocab_size=128256, dropout=0.25):
+        super(Baseline, self).__init__()
+        self.embedding = nn.Embedding(vocab_size, embed_dim)
+        self.embed_dim = embed_dim
+        self.num_layers = num_layers
+        self.rnn = nn.LSTM(embed_dim, hidden_size, num_layers, batch_first=True, dropout=dropout)
+        self.fc = nn.Linear(hidden_size, output_size)
+
+    def forward(self, x, lengths):
+        h0 = torch.zeros(self.num_layers, x.size(0), self.embed_dim).to(x.device)
+        c0 = torch.zeros_like(h0)
+        h = (h0, c0)
+        embedded = self.embedding(x)
+        rnn_out, _ = self.rnn(embedded, h)
+        last_hidden = rnn_out[torch.arange(rnn_out.size(0)), lengths - 1]
+        logits = self.fc(last_hidden)
+        return logits
 
 
 class Baseline(nn.Module):
-    def __init__(self, embed_dim, hidden_size, output_size, num_layers=3, vocab_size=128256, use_rnn=True):
+    def __init__(self, embed_dim, hidden_size, output_size, num_layers=3, vocab_size=128256, use_rnn=True, dropout=0.):
         super(Baseline, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embed_dim)
         self.embed_dim = embed_dim
@@ -13,7 +41,7 @@ class Baseline(nn.Module):
         if use_rnn:
             self.rnn = nn.RNN(embed_dim, hidden_size, num_layers, batch_first=True)
         else:
-            self.rnn = nn.LSTM(embed_dim, hidden_size, num_layers, batch_first=True)
+            self.rnn = nn.LSTM(embed_dim, hidden_size, num_layers, batch_first=True, dropout=dropout)
         self.fc = nn.Linear(hidden_size, output_size)
 
     def forward(self, x, lengths):
@@ -37,11 +65,11 @@ class Baseline(nn.Module):
 
 
 class SmallTransformer(nn.Module):
-    def __init__(self, embed_dim, num_heads, hidden_dim, output_size, max_len=512, vocab_size=128256):
+    def __init__(self, embed_dim, num_heads, hidden_dim, output_size, max_len=512 * 2, vocab_size=128256):
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, embed_dim)
         self.pos_embedding = nn.Embedding(max_len, embed_dim)
-        self.attention = nn.MultiheadAttention(embed_dim, num_heads, dropout=0.1)
+        self.attention = nn.MultiheadAttention(embed_dim, num_heads, dropout=0.2)
         self.ffn = nn.Sequential(
             nn.Linear(embed_dim, hidden_dim),
             nn.ReLU(),
@@ -49,7 +77,7 @@ class SmallTransformer(nn.Module):
         )
         self.fc = nn.Linear(embed_dim, output_size)
 
-    def forward(self, x):
+    def forward(self, x, y):
         positions = torch.arange(x.size(1), device=x.device).unsqueeze(0)
         x = self.embedding(x) + self.pos_embedding(positions)
         x = x.permute(1, 0, 2)
@@ -62,15 +90,16 @@ class SmallTransformer(nn.Module):
     
 
 class TextCNN(nn.Module):
-    def __init__(self, embed_dim, output_size, vocab_size=128256):
+    def __init__(self, embed_dim, output_size, vocab_size=128256, dropout=0.1, num_convs=3):
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, embed_dim)
         self.convs = nn.ModuleList([
-            nn.Conv1d(embed_dim, 100, kernel_size=k) for k in [3, 4, 5]
+            nn.Conv1d(embed_dim, 100, kernel_size=k) for k in [3 + i for i in range(num_convs)]
         ])
-        self.fc = nn.Linear(300, output_size)
+        self.fc = nn.Linear(100 * num_convs, output_size)
+        self.drop = nn.Dropout(dropout)
 
-    def forward(self, x):
+    def forward(self, x, y):
         x = self.embedding(x).permute(0, 2, 1)
-        features = [torch.relu(conv(x)).max(dim=2)[0] for conv in self.convs]
+        features = [torch.relu(self.drop(conv(x))).max(dim=2)[0] for conv in self.convs]
         return self.fc(torch.cat(features, dim=1))
